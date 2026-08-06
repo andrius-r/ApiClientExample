@@ -6,7 +6,7 @@ public sealed class ExternalApiOptions
 
     public string Url { get; set; } = string.Empty;
 
-    public string KeyId { get; set; } = string.Empty;
+    public string Credential { get; set; } = string.Empty;
 
     public string Secret { get; set; } = string.Empty;
 }

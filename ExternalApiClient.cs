@@ -1,30 +1,24 @@
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace ApiClientExample;
 
-public sealed class ExternalApiClient
+public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalApiOptions> options)
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly IOptions<ExternalApiOptions> options = options;
 
-    private readonly HttpClient _httpClient;
-    private readonly IOptions<ExternalApiOptions> _options;
-
-    public ExternalApiClient(HttpClient httpClient, IOptions<ExternalApiOptions> options)
-    {
-        _httpClient = httpClient;
-        _options = options;
-    }
+    const string hostHeader = "Host";
+    const string timestampHeader = "X-Timestamp";
+    const string contentDigestHeader = "Content-Digest";
 
     public async Task<ExternalApiResult> SendAsync(ExternalApiRequest request, CancellationToken cancellationToken)
     {
-        var options = _options.Value;
+        var options = this.options.Value;
 
         if (string.IsNullOrWhiteSpace(options.Url) ||
-            string.IsNullOrWhiteSpace(options.KeyId) ||
+            string.IsNullOrWhiteSpace(options.Credential) ||
             string.IsNullOrWhiteSpace(options.Secret))
         {
             throw new InvalidOperationException("External API configuration is incomplete.");
@@ -35,29 +29,45 @@ public sealed class ExternalApiClient
             throw new InvalidOperationException("External API URL must be an absolute HTTPS address.");
         }
 
-        var json = JsonSerializer.Serialize(request, SerializerOptions);
-        var timestamp = DateTimeOffset.UtcNow.ToString("O");
-        var signature = CreateSignature(options.Secret, timestamp, json);
-
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
-            Content = new StringContent(json, Encoding.UTF8, "application/json")
+            Content = JsonContent.Create(request)
         };
+        await Sign(httpRequest, options.Credential, options.Secret, cancellationToken);
 
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
-            "HMAC",
-            $"{options.KeyId}:{timestamp}:{signature}");
-
-        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         return new ExternalApiResult(response.IsSuccessStatusCode, response.StatusCode, responseBody);
     }
 
-    private static string CreateSignature(string secret, string timestamp, string json)
+    private static async Task Sign(HttpRequestMessage httpRequest, string credential, string secret, CancellationToken cancellationToken)
     {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var payload = Encoding.UTF8.GetBytes($"{timestamp}\n{json}");
-        return Convert.ToBase64String(hmac.ComputeHash(payload));
+        if (httpRequest.RequestUri == null) throw new NullReferenceException(nameof(httpRequest.RequestUri) + " is null");
+        if (httpRequest.Content == null) throw new NullReferenceException(nameof(httpRequest.Content) + " is null");
+
+        string host = httpRequest.RequestUri.Authority;
+        string method = httpRequest.Method.ToString().ToUpperInvariant();
+        string pathAndQuery = httpRequest.RequestUri.PathAndQuery;
+        var contentBytes = await httpRequest.Content.ReadAsByteArrayAsync(cancellationToken);
+        var contentHash = Convert.ToHexString(SHA256.HashData(contentBytes));
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        var signature = CreateSignature(secret, method, pathAndQuery, host, timestamp, contentHash);
+        var signedHeaders = String.Join(';', hostHeader, timestampHeader, contentDigestHeader).ToLowerInvariant();
+
+        // Host header is added automatically by middleware.
+        httpRequest.Headers.Add(timestampHeader, timestamp);
+        httpRequest.Headers.Add(contentDigestHeader, contentHash);
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
+            "HMAC-SHA256",
+            $"Credential={credential}" +
+            $"&SignedHeaders={signedHeaders}" +
+            $"&Signature={signature}");
+    }
+
+    private static string CreateSignature(string secret, string method, string pathAndQuery, params string[] signedValues)
+    {
+        var payload = Encoding.UTF8.GetBytes($"{method}\n{pathAndQuery}\n{string.Join(';', signedValues)}");
+        return Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), payload));
     }
 }
