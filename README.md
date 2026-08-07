@@ -7,7 +7,7 @@ Configure the external API under `ExternalApi`:
 
 - `Url`: absolute HTTPS endpoint
 - `Credential`: client identifier sent in the HMAC authorization header
-- `Secret`: shared secret used to sign the JSON request body
+- `Secret`: shared secret used to sign the JSON request body (in Base64)
 
 The app submits JSON in this shape:
 
@@ -24,8 +24,8 @@ The request uses this header format:
 
 ```text
 X-Timestamp: <unix-timestamp>
-Content-Digest: <hex-sha256-request-body>
-Authorization: HMAC-SHA256 Credential=<credential>&SignedHeaders=host;x-timestamp;content-digest&Signature=<base64-signature>
+x-ms-content-sha256: <base64-sha256-request-body>
+Authorization: HMAC-SHA256 Credential=<credential>&SignedHeaders=host;x-timestamp;x-ms-content-sha256&Signature=<base64-signature>
 ```
 
 The signature is `HMACSHA256(secret, "<HTTP method>\n<path and query>\n<host>;<timestamp>;<content digest>")`.
