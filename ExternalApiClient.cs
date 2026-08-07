@@ -11,7 +11,7 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
 
     const string hostHeader = "Host";
     const string timestampHeader = "X-Timestamp";
-    const string contentDigestHeader = "Content-Digest";
+    const string contentDigestHeader = "x-ms-content-sha256";
 
     public async Task<ExternalApiResult> SendAsync(ExternalApiRequest request, CancellationToken cancellationToken)
     {
@@ -41,6 +41,13 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         return new ExternalApiResult(response.IsSuccessStatusCode, response.StatusCode, responseBody);
     }
 
+    /// <param name="credential">
+    /// Value for the "Credential" field. This should only include a client id, despite the definition of the word "credential" involving both an id and a proof.
+    /// </param>
+    /// <remarks>
+    /// The implementation is largely based on
+    /// <see href="https://docs.azure.cn/en-us/azure-app-configuration/rest-api-authentication-hmac#c">Microsoft Azure documentation</see>.
+    /// </remarks>
     private static async Task Sign(HttpRequestMessage httpRequest, string credential, string secret, CancellationToken cancellationToken)
     {
         if (httpRequest.RequestUri == null) throw new NullReferenceException(nameof(httpRequest.RequestUri) + " is null");
@@ -50,9 +57,11 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         string method = httpRequest.Method.ToString().ToUpperInvariant();
         string pathAndQuery = httpRequest.RequestUri.PathAndQuery;
         var contentBytes = await httpRequest.Content.ReadAsByteArrayAsync(cancellationToken);
-        var contentHash = Convert.ToHexString(SHA256.HashData(contentBytes));
+        var contentHash = Convert.ToBase64String(SHA256.HashData(contentBytes));
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-        var signature = CreateSignature(secret, method, pathAndQuery, host, timestamp, contentHash);
+        var payload = Encoding.UTF8.GetBytes($"{method}\n{pathAndQuery}\n{string.Join(';', host, timestamp, contentHash)}");
+        var key = Convert.FromBase64String(secret);
+        var signature = Convert.ToBase64String(HMACSHA256.HashData(key, payload));
         var signedHeaders = String.Join(';', hostHeader, timestampHeader, contentDigestHeader).ToLowerInvariant();
 
         // Host header is added automatically by middleware.
@@ -63,11 +72,5 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
             $"Credential={credential}" +
             $"&SignedHeaders={signedHeaders}" +
             $"&Signature={signature}");
-    }
-
-    private static string CreateSignature(string secret, string method, string pathAndQuery, params string[] signedValues)
-    {
-        var payload = Encoding.UTF8.GetBytes($"{method}\n{pathAndQuery}\n{string.Join(';', signedValues)}");
-        return Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), payload));
     }
 }
