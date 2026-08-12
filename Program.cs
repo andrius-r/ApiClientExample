@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ApiClientExample;
@@ -25,52 +26,67 @@ public class Program
 
     static async Task<IResult> OnSubmit(
         [FromForm] string text,
-        [FromForm] IFormFile file,
+        [FromForm] IFormFile? file,
         ExternalApiClient externalApiClient,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        ExternalApiRequest externalApiRequest;
+        if (file == null)
         {
-            return Results.BadRequest(new { message = "Text is required." });
+            externalApiRequest = new(text);
         }
-
-        if (file.Length == 0)
+        else
         {
-            return Results.BadRequest(new { message = "A non-empty file is required." });
+            await using var memoryStream = new MemoryStream();
+            await file.CopyToAsync(memoryStream, cancellationToken);
+            externalApiRequest = new ExternalApiRequest(
+                text,
+                file.FileName,
+                file.ContentType,
+                Convert.ToBase64String(memoryStream.ToArray()));
         }
-
-        await using var memoryStream = new MemoryStream();
-        await file.CopyToAsync(memoryStream, cancellationToken);
 
         try
         {
             var result = await externalApiClient.SendAsync(
-                new ExternalApiRequest(
-                    text,
-                    file.FileName,
-                    file.ContentType,
-                    Convert.ToBase64String(memoryStream.ToArray())),
+                externalApiRequest,
                 cancellationToken);
+
+            var responseObject = result.IsJson && TryParseJson(result.ResponseBody, out object? jsonObj) ? jsonObj : result.ResponseBody;
 
             return result.IsSuccessStatusCode
                 ? Results.Ok(new
                 {
                     message = "Submission forwarded successfully.",
                     externalStatusCode = (int)result.StatusCode,
-                    externalResponse = result.ResponseBody
+                    externalResponse = responseObject
                 })
                 : Results.Json(
                     new
                     {
                         message = "The external API call failed.",
                         externalStatusCode = (int)result.StatusCode,
-                        externalResponse = result.ResponseBody
+                        externalResponse = responseObject
                     },
                     statusCode: StatusCodes.Status502BadGateway);
         }
         catch (InvalidOperationException ex)
         {
             return Results.Problem(title: ex.Message, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    private static bool TryParseJson(string responseBody, [NotNullWhen(true)] out object? jsonObj)
+    {
+        try
+        {
+            jsonObj = System.Text.Json.JsonDocument.Parse(responseBody);
+            return true;
+        }
+        catch //(Exception ex)
+        {
+            jsonObj = null;
+            return false;
         }
     }
 }

@@ -2,6 +2,6 @@ namespace ApiClientExample;
 
 public sealed record ExternalApiRequest(
     string Text,
-    string FileName,
-    string? ContentType,
-    string FileContentBase64);
+    string? FileName = null,
+    string? ContentType = null,
+    string? FileContentBase64 = null);

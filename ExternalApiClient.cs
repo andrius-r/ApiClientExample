@@ -38,7 +38,21 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        return new ExternalApiResult(response.IsSuccessStatusCode, response.StatusCode, responseBody);
+        return new ExternalApiResult(response.IsSuccessStatusCode, response.StatusCode, responseBody, HasJsonContentType(response));
+    }
+
+    /// <summary>
+    /// Checks if the HTTP response content type represents a JSON payload.
+    /// </summary>
+    public static bool HasJsonContentType(HttpResponseMessage response)
+    {
+        // Matches 'application/json', 'text/json', or structured suffixes like 'application/problem+json'
+        string? mediaType = response.Content.Headers.ContentType?.MediaType;
+        return mediaType != null && (
+            mediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase) ||
+            mediaType.Equals("text/json", StringComparison.OrdinalIgnoreCase) ||
+            mediaType.EndsWith("+json", StringComparison.OrdinalIgnoreCase)
+        );
     }
 
     /// <param name="credential">

@@ -5,4 +5,5 @@ namespace ApiClientExample;
 public sealed record ExternalApiResult(
     bool IsSuccessStatusCode,
     HttpStatusCode StatusCode,
-    string ResponseBody);
+    string ResponseBody,
+    bool IsJson);
