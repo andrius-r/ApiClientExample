@@ -33,7 +33,7 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         {
             Content = JsonContent.Create(request)
         };
-        await Sign(httpRequest, options.Credential, options.Secret, cancellationToken);
+        await Sign(httpRequest, options.Credential, options.SecretBytes, cancellationToken);
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -62,7 +62,7 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
     /// The implementation is largely based on
     /// <see href="https://docs.azure.cn/en-us/azure-app-configuration/rest-api-authentication-hmac#c">Microsoft Azure documentation</see>.
     /// </remarks>
-    private static async Task Sign(HttpRequestMessage httpRequest, string credential, string secret, CancellationToken cancellationToken)
+    private static async Task Sign(HttpRequestMessage httpRequest, string credential, byte[] key, CancellationToken cancellationToken)
     {
         if (httpRequest.RequestUri == null) throw new NullReferenceException(nameof(httpRequest.RequestUri) + " is null");
         if (httpRequest.Content == null) throw new NullReferenceException(nameof(httpRequest.Content) + " is null");
@@ -74,7 +74,6 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         var contentHash = Convert.ToBase64String(SHA256.HashData(contentBytes));
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
         var payload = Encoding.UTF8.GetBytes($"{method}\n{pathAndQuery}\n{string.Join(';', host, timestamp, contentHash)}");
-        var key = Convert.FromBase64String(secret);
         var signature = Convert.ToBase64String(HMACSHA256.HashData(key, payload));
         var signedHeaders = String.Join(';', hostHeader, timestampHeader, contentDigestHeader).ToLowerInvariant();
 
