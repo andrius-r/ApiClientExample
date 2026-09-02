@@ -75,7 +75,7 @@
                     result.textContent = JSON.stringify(body, null, 2);
                 }
                 catch {
-                    result.textContent = `Local response status: ${response.status}\nResponse text:\n${responseText}`;
+                    result.textContent = `Status: ${response.status}\nText:\n${responseText}`;
                 }
             }
             catch (error) {
