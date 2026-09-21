@@ -7,16 +7,12 @@ namespace ApiClientExample;
 
 public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalApiOptions> options)
 {
-    private readonly IOptions<ExternalApiOptions> options = options;
+    private readonly ExternalApiOptions options = options.Value;
 
     const string hostHeader = "Host";
-    const string timestampHeader = "X-Timestamp";
-    const string contentDigestHeader = "x-ms-content-sha256";
 
     public async Task<ExternalApiResult> SendAsync(ExternalApiRequest request, CancellationToken cancellationToken)
     {
-        var options = this.options.Value;
-
         if (string.IsNullOrWhiteSpace(options.Url) ||
             string.IsNullOrWhiteSpace(options.Credential) ||
             string.IsNullOrWhiteSpace(options.Secret))
@@ -33,7 +29,7 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         {
             Content = JsonContent.Create(request)
         };
-        await Sign(httpRequest, options.Credential, options.SecretBytes, cancellationToken);
+        await Sign(httpRequest, cancellationToken);
 
         using var response = await httpClient.SendAsync(httpRequest, cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -62,7 +58,7 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
     /// The implementation is largely based on
     /// <see href="https://docs.azure.cn/en-us/azure-app-configuration/rest-api-authentication-hmac#c">Microsoft Azure documentation</see>.
     /// </remarks>
-    private static async Task Sign(HttpRequestMessage httpRequest, string credential, byte[] key, CancellationToken cancellationToken)
+    private async Task Sign(HttpRequestMessage httpRequest, CancellationToken cancellationToken)
     {
         if (httpRequest.RequestUri == null) throw new NullReferenceException(nameof(httpRequest.RequestUri) + " is null");
         if (httpRequest.Content == null) throw new NullReferenceException(nameof(httpRequest.Content) + " is null");
@@ -74,15 +70,15 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
         var contentHash = Convert.ToBase64String(SHA256.HashData(contentBytes));
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
         var payload = Encoding.UTF8.GetBytes($"{method}\n{pathAndQuery}\n{string.Join(';', host, timestamp, contentHash)}");
-        var signature = Convert.ToBase64String(HMACSHA256.HashData(key, payload));
-        var signedHeaders = String.Join(';', hostHeader, timestampHeader, contentDigestHeader).ToLowerInvariant();
+        var signature = Convert.ToBase64String(HMACSHA256.HashData(options.SecretBytes, payload));
+        var signedHeaders = String.Join(';', hostHeader, options.TimestampHeader, options.ContentDigestHeader).ToLowerInvariant();
 
         // Host header is added automatically by middleware.
-        httpRequest.Headers.Add(timestampHeader, timestamp);
-        httpRequest.Headers.Add(contentDigestHeader, contentHash);
+        httpRequest.Headers.Add(options.TimestampHeader, timestamp);
+        httpRequest.Headers.Add(options.ContentDigestHeader, contentHash);
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue(
             "HMAC-SHA256",
-            $"Credential={credential}" +
+            $"Credential={options.Credential}" +
             $"&SignedHeaders={signedHeaders}" +
             $"&Signature={signature}");
     }

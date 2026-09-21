@@ -26,6 +26,11 @@ public sealed class ExternalApiOptions
         BinaryEncodingFormat.Base64 => Convert.FromBase64String(Secret),
         BinaryEncodingFormat.Hex or _ => Convert.FromHexString(Secret),
     };
+
+    public string TimestampHeader { get; set; } = "X-Timestamp";
+
+    public string ContentDigestHeader { get; set; } = "x-ms-content-sha256";
+
 }
 
 public enum BinaryEncodingFormat
