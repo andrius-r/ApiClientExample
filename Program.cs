@@ -19,7 +19,7 @@ public class Program
                 throw new InvalidOperationException("External API timeout must be greater than zero seconds.");
             }
 
-            httpClient.Timeout = TimeSpan.FromSeconds(options.Timeout);
+            httpClient.Timeout = TimeSpan.FromTicks((long)options.Timeout * TimeSpan.TicksPerSecond);
         });
 
         var app = builder.Build();
