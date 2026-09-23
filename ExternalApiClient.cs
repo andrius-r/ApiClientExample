@@ -30,8 +30,6 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
             throw new InvalidOperationException("External API timeout must be greater than zero seconds.");
         }
 
-        httpClient.Timeout = TimeSpan.FromSeconds(options.Timeout);
-
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = JsonContent.Create(request)

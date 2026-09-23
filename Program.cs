@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace ApiClientExample;
 
@@ -10,7 +11,16 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         builder.Services.Configure<ExternalApiOptions>(builder.Configuration.GetSection(ExternalApiOptions.SectionName));
-        builder.Services.AddHttpClient<ExternalApiClient>();
+        builder.Services.AddHttpClient<ExternalApiClient>((serviceProvider, httpClient) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<ExternalApiOptions>>().Value;
+            if (options.Timeout <= 0)
+            {
+                throw new InvalidOperationException("External API timeout must be greater than zero seconds.");
+            }
+
+            httpClient.Timeout = TimeSpan.FromSeconds(options.Timeout);
+        });
 
         var app = builder.Build();
 
