@@ -7,6 +7,7 @@ Configure the external API under `ExternalApi`:
 
 - `Url`: absolute HTTPS endpoint
 - `Credential`: client identifier sent in the HMAC authorization header
+- `Timeout`: request timeout in seconds
 - `Secret`: shared secret used to sign the JSON request body (in Base64)
 
 The app submits JSON in this shape:

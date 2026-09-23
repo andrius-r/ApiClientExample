@@ -8,6 +8,8 @@ public sealed class ExternalApiOptions
 
     public string Credential { get; set; } = string.Empty;
 
+    public int Timeout { get; set; } = 200;
+
     public string Secret
     {
         get;
