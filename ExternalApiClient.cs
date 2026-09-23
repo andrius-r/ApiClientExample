@@ -25,11 +25,6 @@ public sealed class ExternalApiClient(HttpClient httpClient, IOptions<ExternalAp
             throw new InvalidOperationException("External API URL must be an absolute HTTPS address.");
         }
 
-        if (options.Timeout <= 0)
-        {
-            throw new InvalidOperationException("External API timeout must be greater than zero seconds.");
-        }
-
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = JsonContent.Create(request)
